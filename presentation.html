@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Traffic Light System — Arduino + KS6008</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Reveal.js CDN -->
+  <link rel="stylesheet" href="[cdn.jsdelivr.net](https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.css)">
+  <link rel="stylesheet" href="[cdn.jsdelivr.net](https://cdn.jsdelivr.net/npm/reveal.js@5/dist/theme/black.css)" id="theme">
+  <style>
+    /* Brand tweaks to match your site */
+    :root { --acc:#4f8cff; }
+    .reveal h1, .reveal h2, .reveal h3 { letter-spacing: 0.2px; }
+    .reveal a { color: var(--acc); }
+    .reveal .slides { text-align: left; }
+    .reveal section img { border-radius: 10px; border: 1px solid #2a2f3a; }
+    .foot { font-size: 18px; opacity: .85; margin-top: 16px; }
+    .code { font-size: 0.62em; line-height: 1.25; }
+    .cols { display: grid; grid-template-columns: 1.1fr .9fr; gap: 20px; align-items: start; }
+    @media (max-width: 900px){ .cols { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<div class="reveal">
+  <div class="slides">
+
+    <!-- Title -->
+    <section>
+      <h1>Traffic Light System — Arduino + KS6008</h1>
+      <p>Single-direction signal with realistic timing</p>
+      <p class="foot">sasindurandika · Live: <a href="[sasindurandika.github.io](https://sasindurandika.github.io/traffic-light)" target="_blank">sasindurandika.github.io/traffic-light</a> · Repo: <a href="[github.com](https://github.com/sasindurandika/traffic-light)" target="_blank">github.com/sasindurandika/traffic-light</a></p>
+      <aside class="notes">
+        Introduce the aim: build and document a simple, reliable traffic light with realistic timing and clean code.
+      </aside>
+    </section>
+
+    <!-- Objectives -->
+    <section>
+      <h2>Objectives</h2>
+      <ul>
+        <li>Implement a single-direction cycle: Green → Yellow → Red.</li>
+        <li>Practice digital outputs and time-based control on Arduino.</li>
+        <li>Keep code readable and extendable (state machine-ready).</li>
+        <li>Publish documentation on GitHub Pages.</li>
+      </ul>
+      <aside class="notes">Learning outcomes: wiring, timing, documentation.</aside>
+    </section>
+
+    <!-- System Overview -->
+    <section>
+      <h2>System Overview</h2>
+      <ul>
+        <li><strong>Controller:</strong> Arduino UNO (Leonardo/Mega compatible)</li>
+        <li><strong>Actuator:</strong> KS6008 3‑LED traffic module (R, Y, G)</li>
+        <li><strong>Logic:</strong> fixed-time sequence + short “all‑off” transitions</li>
+        <li><strong>Power:</strong> USB 5V</li>
+      </ul>
+      <aside class="notes">Onboard resistors simplify wiring.</aside>
+    </section>
+
+    <!-- BOM -->
+    <section>
+      <h2>Bill of Materials</h2>
+      <ul>
+        <li>Arduino UNO + USB cable</li>
+        <li>KS6008 Traffic Light Module (R, Y, G, V, G)</li>
+        <li>Jumper wires (male–female)</li>
+        <li>Optional: KS0029 Push Button (future pedestrian request)</li>
+      </ul>
+    </section>
+
+    <!-- Operating Principles -->
+    <section>
+      <h2>Operating Principles</h2>
+      <ul>
+        <li>Meanings: Green = go, Yellow = prepare, Red = stop.</li>
+        <li>Demo timings: Green 8 s · Yellow 2 s · Red 8 s · Gap 0.2 s.</li>
+        <li>Deterministic cycle for predictability.</li>
+      </ul>
+      <aside class="notes">Real signals add all‑red clearance and detectors.</aside>
+    </section>
+
+    <!-- Wiring -->
+    <section>
+      <h2>Wiring</h2>
+      <div class="cols">
+        <div>
+          <ul>
+            <li>Module G → Arduino GND</li>
+            <li>Module V → Arduino 5V</li>
+            <li>R → D8, Y → D9, G → D10</li>
+          </ul>
+          <p>Tip: If colors appear inverted, swap HIGH/LOW in code.</p>
+        </div>
+        <div>
+          <img src="assets/wiring-diagram.png" alt="Wiring diagram: D8/D9/D10 to R/Y/G">
+        </div>
+      </div>
+    </section>
+
+    <!-- Code (Blocking) -->
+    <section>
+      <h2>Code — Blocking Version</h2>
+      <pre class="code"><code>
+// KS6008 traffic light — single direction (blocking)
+const int PIN_RED = 8;
+const int PIN_YEL = 9;
+const int PIN_GRN = 10;
+unsigned long T_GREEN=8000, T_YELLOW=2000, T_RED=8000, T_ALL_OFF=200;
+
+void setup(){
+  pinMode(PIN_RED,OUTPUT); pinMode(PIN_YEL,OUTPUT); pinMode(PIN_GRN,OUTPUT);
+  digitalWrite(PIN_RED,LOW); digitalWrite(PIN_YEL,LOW); digitalWrite(PIN_GRN,LOW);
+}
+void allOff(){ digitalWrite(PIN_RED,LOW); digitalWrite(PIN_YEL,LOW); digitalWrite(PIN_GRN,LOW); }
+void red()    { digitalWrite(PIN_RED,HIGH); digitalWrite(PIN_YEL,LOW);  digitalWrite(PIN_GRN,LOW); }
+void yellow() { digitalWrite(PIN_RED,LOW);  digitalWrite(PIN_YEL,HIGH); digitalWrite(PIN_GRN,LOW); }
+void green()  { digitalWrite(PIN_RED,LOW);  digitalWrite(PIN_YEL,LOW);  digitalWrite(PIN_GRN,HIGH); }
+
+void loop(){
+  green();  delay(T_GREEN);  allOff(); delay(T_ALL_OFF);
+  yellow(); delay(T_YELLOW); allOff(); delay(T_ALL_OFF);
+  red();    delay(T_RED);    allOff(); delay(T_ALL_OFF);
+}
+      </code></pre>
+      <aside class="notes">Simple and perfect for a standalone demo.</aside>
+    </section>
+
+    <!-- Code (Non-blocking) -->
+    <section>
+      <h2>Code — Non‑Blocking (State Machine)</h2>
+      <pre class="code"><code>
+// KS6008 traffic light — non-blocking state machine
+enum Phase { P_GREEN, P_GAP1, P_YELLOW, P_GAP2, P_RED, P_GAP3 };
+Phase phase = P_GREEN; unsigned long t0 = 0;
+const int R=8, Y=9, G=10;
+const unsigned long TG=8000, TY=2000, TR=8000, TGAP=200;
+
+void set(bool r,bool y,bool g){ digitalWrite(R,r); digitalWrite(Y,y); digitalWrite(G,g); }
+void enter(Phase p){
+  phase=p; t0=millis();
+  if(p==P_GREEN) set(0,0,1);
+  else if(p==P_YELLOW) set(0,1,0);
+  else if(p==P_RED) set(1,0,0);
+  else set(0,0,0); // gaps
+}
+void setup(){ pinMode(R,OUTPUT); pinMode(Y,OUTPUT); pinMode(G,OUTPUT); enter(P_GREEN); }
+void loop(){
+  unsigned long now=millis();
+  if(phase==P_GREEN && now-t0>=TG) enter(P_GAP1);
+  else if(phase==P_GAP1 && now-t0>=TGAP) enter(P_YELLOW);
+  else if(phase==P_YELLOW && now-t0>=TY) enter(P_GAP2);
+  else if(phase==P_GAP2 && now-t0>=TGAP) enter(P_RED);
+  else if(phase==P_RED && now-t0>=TR) enter(P_GAP3);
+  else if(phase==P_GAP3 && now-t0>=TGAP) enter(P_GREEN);
+}
+      </code></pre>
+      <aside class="notes">Ready for buttons, LCD, logging without refactor.</aside>
+    </section>
+
+    <!-- Upload & Test -->
+    <section>
+      <h2>Upload & Test</h2>
+      <ul>
+        <li>Arduino IDE → Board: Arduino Uno → select Port.</li>
+        <li>Paste code → Verify → Upload.</li>
+        <li>Observe: Green → Yellow → Red → repeat.</li>
+      </ul>
+      <aside class="notes">If LEDs mismatch labels, check wiring and pin defines.</aside>
+    </section>
+
+    <!-- Tuning -->
+    <section>
+      <h2>Tuning & Behavior</h2>
+      <ul>
+        <li>Calmer: increase Green/Red to 10–15 s.</li>
+        <li>Snappier: shorten all‑off gap to ~100 ms.</li>
+        <li>Crisp look comes from the brief “all‑off” transition.</li>
+      </ul>
+    </section>
+
+    <!-- Results -->
+    <section>
+      <h2>Results</h2>
+      <ul>
+        <li>Stable operation and crisp transitions.</li>
+        <li>Timings within typical Arduino accuracy (±1%).</li>
+        <li>Safe current draw (module has onboard resistors).</li>
+      </ul>
+    </section>
+
+    <!-- Extensions -->
+    <section>
+      <h2>Extensions</h2>
+      <ul>
+        <li>Pedestrian button (D2, INPUT_PULLUP) schedules crossing.</li>
+        <li>LCD 1602 I2C: show phase and countdown.</li>
+        <li>Buzzer cue on Yellow start.</li>
+        <li>ESP32 web UI to tweak timings live.</li>
+      </ul>
+    </section>
+
+    <!-- Pages / Docs -->
+    <section>
+      <h2>Documentation (GitHub Pages)</h2>
+      <ul>
+        <li>Public repo with index.html at root.</li>
+        <li>Settings → Pages → Deploy from a branch → main / root.</li>
+        <li>Live: <a href="[sasindurandika.github.io](https://sasindurandika.github.io/traffic-light)" target="_blank">sasindurandika.github.io/traffic-light</a></li>
+      </ul>
+    </section>
+
+    <!-- Visuals -->
+    <section>
+      <h2>Build Photos</h2>
+      <div class="cols">
+        <img src="assets/traffic-module.jpg" alt="KS6008 module photo">
+        <img src="assets/arduino-uno.jpg" alt="Arduino UNO photo">
+      </div>
+      <aside class="notes">Swap in your own photos for authenticity.</aside>
+    </section>
+
+    <!-- Closing -->
+    <section>
+      <h2>Links & Credits</h2>
+      <ul>
+        <li>Live demo: <a href="[sasindurandika.github.io](https://sasindurandika.github.io/traffic-light)" target="_blank">sasindurandika.github.io/traffic-light</a></li>
+        <li>Repo: <a href="[github.com](https://github.com/sasindurandika/traffic-light)" target="_blank">github.com/sasindurandika/traffic-light</a></li>
+        <li>Author: sasindurandika</li>
+      </ul>
+    </section>
+
+  </div>
+</div>
+
+<script src="[cdn.jsdelivr.net](https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.js)"></script>
+<script>
+  Reveal.initialize({
+    hash: true,
+    slideNumber: true,
+    plugins: []
+  });
+</script>
+</body>
+</html>
